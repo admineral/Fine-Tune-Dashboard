@@ -60,6 +60,29 @@ export async function createJSONLFile(pairs: z.infer<typeof QAPair>[]) {
   return jsonlContent;
 }
 
+export async function createJSONLFromSelected(pairs: z.infer<typeof QAPair>[], selectedIndices: number[]) {
+  const selectedPairs = pairs.filter((_, index) => selectedIndices.includes(index));
+  const jsonlContent = selectedPairs.map(pair => JSON.stringify({
+    messages: [
+      { role: "user", content: pair.question },
+      { role: "assistant", content: pair.answer }
+    ]
+  })).join('\n');
+  return jsonlContent;
+}
+
+export async function getSelectedPairsPreview(pairs: z.infer<typeof QAPair>[], selectedIndices: number[]) {
+  const selectedPairs = pairs
+    .filter((_, index) => selectedIndices.includes(index))
+    .map(pair => ({ question: pair.question, answer: pair.answer }));
+
+  if (selectedPairs.length < 10) {
+    throw new Error("At least 10 Q&A pairs must be selected for training.");
+  }
+
+  return selectedPairs;
+}
+
 export async function uploadJSONLFile(jsonlContent: string) {
   try {
     const blob = new Blob([jsonlContent], { type: 'application/jsonl' });
