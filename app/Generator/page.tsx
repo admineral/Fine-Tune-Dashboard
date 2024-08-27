@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { experimental_useObject as useObject } from 'ai/react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,27 +15,35 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { 
-  generateQAPairs, 
+  type QAPair as ImportedQAPair,
   saveQAPairs, 
   createJSONLFile, 
   uploadJSONLFile, 
   startFineTuning, 
   createJSONLFromSelected, 
-  getSelectedPairsPreview 
+  getSelectedPairsPreview,
 } from "./actions"
-import { z } from 'zod'
 import Link from 'next/link'
 import { Home } from 'lucide-react'
+import { z } from 'zod'
 
-const QAPair = z.object({
-  question: z.string(),
-  answer: z.string(),
-});
+// Define the QAPair type
+type QAPair = {
+  question: string;
+  answer: string;
+}
 
-function QAPairList({ pairs, selectedPairs, setSelectedPairs }: { pairs: z.infer<typeof QAPair>[], selectedPairs: Set<number>, setSelectedPairs: React.Dispatch<React.SetStateAction<Set<number>>> }) {
+// Define the schema for QA pairs
+const qaSchema = z.object({
+  pairs: z.array(z.object({
+    question: z.string(),
+    answer: z.string(),
+  }))
+})
+
+function QAPairList({ pairs, selectedPairs, setSelectedPairs }: { pairs: QAPair[], selectedPairs: Set<number>, setSelectedPairs: React.Dispatch<React.SetStateAction<Set<number>>> }) {
   const togglePair = (index: number) => {
     setSelectedPairs(prev => {
       const newSet = new Set(prev);
@@ -77,10 +86,7 @@ function QAPairList({ pairs, selectedPairs, setSelectedPairs }: { pairs: z.infer
     try {
       const jsonlContent = await createJSONLFile(selectedData);
       
-      // Create a Blob with the JSONL content
       const blob = new Blob([jsonlContent], { type: 'application/jsonl' });
-      
-      // Create a download link and trigger the download
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -153,7 +159,7 @@ function QAPairList({ pairs, selectedPairs, setSelectedPairs }: { pairs: z.infer
   )
 }
 
-function TrainModelSection({ pairs, selectedPairs }: { pairs: z.infer<typeof QAPair>[], selectedPairs: Set<number> }) {
+function TrainModelSection({ pairs, selectedPairs }: { pairs: QAPair[], selectedPairs: Set<number> }) {
   const [modelName, setModelName] = useState('gpt-4o-2024-08-06');
   const [isUploading, setIsUploading] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
@@ -330,25 +336,20 @@ function TrainModelSection({ pairs, selectedPairs }: { pairs: z.infer<typeof QAP
 export default function DataPreparationPage() {
   const [topic, setTopic] = useState('')
   const [numPairs, setNumPairs] = useState(10)
-  const [generatedPairs, setGeneratedPairs] = useState<z.infer<typeof QAPair>[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [selectedPairs, setSelectedPairs] = useState<Set<number>>(new Set());
+  const [selectedPairs, setSelectedPairs] = useState<Set<number>>(new Set())
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const { object: generatedPairs, submit, isLoading, error, stop } = useObject<{ pairs: QAPair[] }>({
+    api: '/api/generate-qa-pairs',
+    schema: qaSchema,
+    onError: (err) => setErrorMessage(getErrorMessage(err)),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setGeneratedPairs(null)
-    setIsLoading(true)
-
-    try {
-      const result = await generateQAPairs(topic, numPairs)
-      setGeneratedPairs(result.pairs)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'An unexpected error occurred')
-    } finally {
-      setIsLoading(false)
-    }
+    setDebugInfo([])
+    submit({ topic, numPairs })
   }
 
   return (
@@ -399,25 +400,47 @@ export default function DataPreparationPage() {
 
       {isLoading && (
         <Card className="mb-8 shadow-lg">
-          <CardContent className="flex justify-center items-center p-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            <span className="ml-3">Generating Q&A pairs...</span>
+          <CardContent className="flex justify-between items-center p-4">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mr-3"></div>
+              <span>Generating Q&A pairs... ({generatedPairs?.pairs?.length || 0}/{numPairs})</span>
+            </div>
+            <Button onClick={stop}>Stop Generation</Button>
           </CardContent>
         </Card>
       )}
 
-      {error && (
+      {errorMessage && (
         <Alert variant="destructive" className="mb-6">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{errorMessage}</AlertDescription>
         </Alert>
       )}
 
-      {generatedPairs && (
-        <>
-          <QAPairList pairs={generatedPairs} selectedPairs={selectedPairs} setSelectedPairs={setSelectedPairs} />
-          <TrainModelSection pairs={generatedPairs} selectedPairs={selectedPairs} />
-        </>
+      {generatedPairs?.pairs && generatedPairs.pairs.length > 0 && (
+        <QAPairList pairs={generatedPairs.pairs as QAPair[]} selectedPairs={selectedPairs} setSelectedPairs={setSelectedPairs} />
+      )}
+
+      {generatedPairs?.pairs && generatedPairs.pairs.length > 0 && (
+        <TrainModelSection pairs={generatedPairs.pairs as QAPair[]} selectedPairs={selectedPairs} />
+      )}
+
+      {debugInfo.length > 0 && (
+        <Card className="mt-8 shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl">Debug Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="bg-gray-200 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap">
+              {debugInfo.join('')}
+            </pre>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
 }
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
