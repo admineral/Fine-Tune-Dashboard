@@ -16,6 +16,7 @@ function getBadgeVariant(status: string): "default" | "destructive" | "outline" 
     case 'succeeded':
       return 'secondary';
     case 'failed':
+    case 'cancelled':
       return 'destructive';
     case 'running':
       return 'default';
@@ -27,7 +28,7 @@ function getBadgeVariant(status: string): "default" | "destructive" | "outline" 
 export default function FineTuningJobList({ initialJobs }: { initialJobs: FineTuningJob[] }) {
   const [jobs, setJobs] = useState<FineTuningJob[]>(initialJobs)
   const [isLoading, setIsLoading] = useState(false)
-  const [isCancelling, setIsCancelling] = useState(false)
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null)
   const router = useRouter()
 
   const fetchJobs = async () => {
@@ -58,10 +59,10 @@ export default function FineTuningJobList({ initialJobs }: { initialJobs: FineTu
   }, [])
 
   const handleCancel = async (jobId: string) => {
-    setIsCancelling(true)
+    setCancellingJobId(jobId)
     try {
       await cancelFineTuningJob(jobId)
-      router.refresh() // This will trigger a re-render with fresh data
+      await fetchJobs() // Refresh the job list after cancellation
       toast({
         title: "Success",
         description: "Job cancelled successfully.",
@@ -74,7 +75,7 @@ export default function FineTuningJobList({ initialJobs }: { initialJobs: FineTu
         variant: "destructive",
       })
     } finally {
-      setIsCancelling(false)
+      setCancellingJobId(null)
     }
   }
 
@@ -120,9 +121,9 @@ export default function FineTuningJobList({ initialJobs }: { initialJobs: FineTu
                       {job.status === 'running' && (
                         <Button 
                           onClick={() => handleCancel(job.id)} 
-                          disabled={isCancelling}
+                          disabled={cancellingJobId === job.id}
                         >
-                          {isCancelling ? 'Cancelling...' : 'Cancel'}
+                          {cancellingJobId === job.id ? 'Cancelling...' : 'Cancel'}
                         </Button>
                       )}
                     </TableCell>

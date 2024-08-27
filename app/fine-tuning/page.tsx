@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,12 +19,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 
 function getBadgeVariant(status: string): "default" | "destructive" | "outline" | "secondary" {
   switch (status) {
     case 'succeeded':
       return 'secondary';
     case 'failed':
+    case 'cancelled':
       return 'destructive';
     case 'running':
       return 'default';
@@ -43,6 +44,7 @@ export default function FineTuningPage() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [previewContent, setPreviewContent] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null)
   const router = useRouter()
 
   const fetchJobs = async () => {
@@ -106,7 +108,7 @@ export default function FineTuningPage() {
     try {
       const fileContent = await file!.text()
       const uploadedFileId = await uploadJSONLFile(fileContent)
-      const fineTuningJob = await startFineTuning(uploadedFileId, modelName)
+      await startFineTuning(uploadedFileId, modelName)
       toast({
         title: "Success",
         description: "Fine-tuning job created successfully.",
@@ -129,6 +131,7 @@ export default function FineTuningPage() {
   }
 
   const handleCancelJob = async (jobId: string) => {
+    setCancellingJobId(jobId)
     try {
       await cancelFineTuningJob(jobId)
       toast({
@@ -143,6 +146,8 @@ export default function FineTuningPage() {
         description: "Failed to cancel job. Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setCancellingJobId(null)
     }
   }
 
@@ -218,12 +223,17 @@ export default function FineTuningPage() {
                         <div>
                           <h3 className="font-semibold">{job.id}</h3>
                           <p>Model: {job.model}</p>
-                          <p>Status: <span className={`badge ${getBadgeVariant(job.status)}`}>{job.status}</span></p>
+                          <p>Status: <Badge variant={getBadgeVariant(job.status)}>{job.status}</Badge></p>
                           <p>Created at: {new Date(job.created_at * 1000).toLocaleString()}</p>
                         </div>
-                        {job.status === 'running' && (
-                          <Button onClick={() => handleCancelJob(job.id)} variant="destructive" size="sm">
-                            Cancel
+                        {job.status !== 'succeeded' && job.status !== 'failed' && job.status !== 'cancelled' && (
+                          <Button 
+                            onClick={() => handleCancelJob(job.id)} 
+                            variant="destructive" 
+                            size="sm"
+                            disabled={cancellingJobId === job.id}
+                          >
+                            {cancellingJobId === job.id ? 'Cancelling...' : 'Cancel'}
                           </Button>
                         )}
                       </div>
