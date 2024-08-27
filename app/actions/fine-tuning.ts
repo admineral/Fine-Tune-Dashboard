@@ -34,6 +34,7 @@ import {
   MAX_SUFFIX_LENGTH
 } from '@/types/fine-tuning'
 import { logRequest, logResponse, logError, logServerAction } from '@/lib/logging'
+import { cache } from 'react'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -198,10 +199,25 @@ export async function createFineTuningJob(formData: FormData): Promise<FineTunin
  * @returns The list of fine-tuning jobs
  * @throws FineTuningError
  */
-export async function listFineTuningJobs(params: ListFineTuningJobsRequest = {}): Promise<FineTuningJobResponse> {
+export async function listFineTuningJobs(params: ListFineTuningJobsRequest) {
   try {
-    return await handleRequest<FineTuningJobResponse>('listFineTuningJobs', 'GET', params);
-  } catch (error) {
+    const startTime = Date.now();
+    const response = await openai.fineTuning.jobs.list(params);
+    const duration = Date.now() - startTime;
+
+    const structuredOutput = {
+      totalJobs: response.data.length,
+      jobs: response.data.map(job => ({
+        ...job,
+        estimated_finish: job.estimated_finish || null,
+      }))
+    };
+
+    logResponse('listFineTuningJobs', 200, duration, structuredOutput);
+    return structuredOutput;
+  } catch (error: unknown) {
+    console.error('[OpenAI API] listFineTuningJobs failed:', error instanceof Error ? error.message : String(error));
+    logError('GET', 'listFineTuningJobs', error as Error);
     throw error instanceof FineTuningError ? error : new FineTuningError('Failed to list fine-tuning jobs', 'listFineTuningJobs', 'LIST_JOBS_ERROR', error);
   }
 }
