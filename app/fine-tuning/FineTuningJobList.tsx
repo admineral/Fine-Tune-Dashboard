@@ -9,6 +9,7 @@ import { FineTuningJob } from '@/types/fine-tuning'
 import { listFineTuningJobs, cancelFineTuningJob } from '../actions/fine-tuning'
 import { toast } from "@/components/ui/use-toast"
 import { useRouter } from 'next/navigation'
+import { RefreshCw } from "lucide-react";
 
 function getBadgeVariant(status: string): "default" | "destructive" | "outline" | "secondary" {
   switch (status) {
@@ -29,26 +30,28 @@ export default function FineTuningJobList({ initialJobs }: { initialJobs: FineTu
   const [isCancelling, setIsCancelling] = useState(false)
   const router = useRouter()
 
-  useEffect(() => {
-    const fetchJobs = async () => {
-      setIsLoading(true)
-      try {
-        const response = await listFineTuningJobs({})
-        if ('jobs' in response) {
-          setJobs(response.jobs)
-        }
-      } catch (error) {
-        console.error('Failed to fetch jobs:', error)
-        toast({
-          title: "Error",
-          description: "Failed to fetch jobs. Please try again later.",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoading(false)
+  const fetchJobs = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/fine-tuning/jobs?timestamp=' + Date.now());
+      const data = await response.json();
+      if (data.jobs) {
+        setJobs(data.jobs);
       }
+    } catch (error) {
+      console.error('Failed to fetch jobs:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch jobs. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
+  };
 
+  useEffect(() => {
+    fetchJobs(); // Fetch jobs immediately when component mounts
     const intervalId = setInterval(fetchJobs, 30000) // Update every 30 seconds
 
     return () => clearInterval(intervalId)
@@ -76,51 +79,60 @@ export default function FineTuningJobList({ initialJobs }: { initialJobs: FineTu
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Fine-tuning Jobs</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading && jobs.length === 0 ? (
-          <p>Loading jobs...</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.map((job) => (
-                <TableRow key={job.id}>
-                  <TableCell>{job.id}</TableCell>
-                  <TableCell>{job.model}</TableCell>
-                  <TableCell>
-                    <Badge variant={getBadgeVariant(job.status)}>
-                      {job.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{new Date(job.created_at * 1000).toLocaleString()}</TableCell>
-                  <TableCell>
-                    {job.status === 'running' && (
-                      <Button 
-                        onClick={() => handleCancel(job.id)} 
-                        disabled={isCancelling}
-                      >
-                        {isCancelling ? 'Cancelling...' : 'Cancel'}
-                      </Button>
-                    )}
-                  </TableCell>
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Fine-Tuning Jobs</h2>
+        <Button onClick={fetchJobs} disabled={isLoading}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Fine-tuning Jobs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading && jobs.length === 0 ? (
+            <p>Loading jobs...</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created At</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+              </TableHeader>
+              <TableBody>
+                {jobs.map((job) => (
+                  <TableRow key={job.id}>
+                    <TableCell>{job.id}</TableCell>
+                    <TableCell>{job.model}</TableCell>
+                    <TableCell>
+                      <Badge variant={getBadgeVariant(job.status)}>
+                        {job.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{new Date(job.created_at * 1000).toLocaleString()}</TableCell>
+                    <TableCell>
+                      {job.status === 'running' && (
+                        <Button 
+                          onClick={() => handleCancel(job.id)} 
+                          disabled={isCancelling}
+                        >
+                          {isCancelling ? 'Cancelling...' : 'Cancel'}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }

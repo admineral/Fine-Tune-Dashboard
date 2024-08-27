@@ -4,6 +4,7 @@ import { logRequest, logResponse, logError } from '@/lib/logging'
 import { ListFineTuningJobsRequest } from '@/types/fine-tuning'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0; // Disable caching for this route
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -12,6 +13,9 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const params: ListFineTuningJobsRequest = Object.fromEntries(searchParams.entries())
+
+    // Remove the timestamp parameter if it exists
+    delete (params as any).timestamp;
 
     const jobs = await listFineTuningJobs(params)
     const duration = Date.now() - startTime
